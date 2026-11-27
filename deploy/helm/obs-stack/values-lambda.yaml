@@ -1,0 +1,43 @@
+# Overrides for a single Lambda Cloud GPU node running k3s.
+#   helm upgrade --install obs deploy/helm/obs-stack -n observability --create-namespace \
+#     -f deploy/helm/obs-stack/values-lambda.yaml
+# deploy/cloud/lambda/bootstrap.sh does this for you.
+
+clusterName: lambda-gpu
+environment: lambda
+
+clickhouse:
+  storage: 50Gi
+  resources:
+    requests: { cpu: "1", memory: 2Gi }
+    limits: { memory: 8Gi }
+
+otel:
+  # Full collector (adds prometheusreceiver), built on the node by bootstrap.sh.
+  image: obsdemo/otelcol-obs:0.1.0-full
+  agent:
+    scrape:
+      enabled: true
+    resources:
+      requests: { cpu: 200m, memory: 256Mi }
+      limits: { memory: 512Mi }
+  gateway:
+    # The node has a public IP: keep everything cluster-internal, reach UIs over SSH tunnels.
+    serviceType: ClusterIP
+
+gpu:
+  dcgmExporter:
+    enabled: true
+
+demo:
+  loadgenRPS: 20
+
+prometheus:
+  # node_exporter: InfiniBand port counters, NVMe, disks, filesystems, pressure.
+  prometheus-node-exporter:
+    enabled: true
+    hostNetwork: true
+
+grafana:
+  service:
+    type: ClusterIP

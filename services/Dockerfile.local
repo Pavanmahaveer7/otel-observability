@@ -1,0 +1,7 @@
+# Packages a binary cross-compiled on the host (scripts/build-images.ps1).
+# Use ./Dockerfile instead for a fully containerised build (CI).
+FROM alpine:3.20
+RUN adduser -D -u 65532 app
+COPY bin/demo-linux /demo
+USER 65532
+ENTRYPOINT ["/demo"]

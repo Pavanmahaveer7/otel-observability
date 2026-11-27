@@ -1,0 +1,7 @@
+# Packages the OCB-built collector cross-compiled on the host (scripts/build-images.ps1).
+# Use ./Dockerfile instead for a fully containerised OCB build (CI).
+FROM alpine:3.20
+COPY _build/otelcol-obs-linux /otelcol-obs
+EXPOSE 4317 4318 8888 8889 13133
+ENTRYPOINT ["/otelcol-obs"]
+CMD ["--config=/conf/config.yaml"]

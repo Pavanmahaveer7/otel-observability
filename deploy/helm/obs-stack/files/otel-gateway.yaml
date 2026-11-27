@@ -1,0 +1,148 @@
+# OTel gateway: central collector (Deployment). Rendered by Helm via `tpl`.
+# Receives from node agents and the bare-metal host agent, adds cluster-level
+# metrics and k8s events, derives RED metrics from spans, and writes all three
+# signals to ClickHouse. Metrics are also pushed to Prometheus over OTLP.
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  zpages:
+    endpoint: 0.0.0.0:55679
+  pprof:
+    endpoint: 0.0.0.0:1777
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Cluster-wide state: deployments, pods phase, node conditions, restarts...
+  k8s_cluster:
+    auth_type: serviceAccount
+    collection_interval: 30s
+    node_conditions_to_report: [Ready, MemoryPressure, DiskPressure]
+    allocatable_types_to_report: [cpu, memory]
+
+  # Kubernetes events as logs.
+  k8s_objects:
+    auth_type: serviceAccount
+    objects:
+      - name: events
+        mode: watch
+        group: events.k8s.io
+
+{{- if .Values.nginx.enabled }}
+
+  # nginx stub_status: connections (active/reading/writing/waiting), accepted/handled, requests.
+  nginx:
+    endpoint: http://nginx.{{ .Values.nginx.namespace }}.svc:8081/status
+    collection_interval: 15s
+{{- end }}
+
+connectors:
+  # RED metrics (rate, errors, duration) generated from spans.
+  span_metrics:
+    namespace: traces.span.metrics
+    histogram:
+      explicit:
+        buckets: [5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2500ms]
+    dimensions:
+      - name: http.request.method
+      - name: http.response.status_code
+    metrics_flush_interval: 15s
+
+processors:
+  # Fixed MiB limits: percentage mode can't read cgroup limits under minikube's docker driver.
+  # Keep below the container memory limit (1Gi) and GOMEMLIMIT (800MiB).
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 760
+    spike_limit_mib: 160
+
+  filter/drop-health:
+    error_mode: ignore
+    traces:
+      span:
+        - 'attributes["url.path"] == "/healthz"'
+
+  resource/env:
+    attributes:
+      - { key: deployment.environment.name, value: {{ .Values.environment }}, action: insert }
+
+  # stub_status metrics carry no resource of their own.
+  resource/nginx:
+    attributes:
+      - { key: service.name, value: nginx, action: upsert }
+      - { key: k8s.namespace.name, value: {{ .Values.nginx.namespace }}, action: upsert }
+
+  batch:
+    send_batch_size: 5000
+    timeout: 5s
+
+exporters:
+  clickhouse:
+    endpoint: tcp://{{ include "obs.fullname" . }}-clickhouse:9000?dial_timeout=10s
+    database: {{ .Values.clickhouse.database }}
+    username: ${env:CLICKHOUSE_USER}
+    password: ${env:CLICKHOUSE_PASSWORD}
+    create_schema: true
+    ttl: {{ .Values.clickhouse.ttl }}
+    logs_table_name: otel_logs
+    traces_table_name: otel_traces
+    timeout: 10s
+    sending_queue:
+      enabled: true
+      queue_size: 1000
+    retry_on_failure:
+      enabled: true
+      initial_interval: 5s
+      max_interval: 30s
+      max_elapsed_time: 300s
+
+  # Prometheus v3 native OTLP ingestion (--web.enable-otlp-receiver).
+  otlp_http/prometheus:
+    metrics_endpoint: http://{{ include "obs.fullname" . }}-prometheus-server/api/v1/otlp/v1/metrics
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+    retry_on_failure:
+      enabled: true
+
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [health_check, zpages, pprof]
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      level: normal
+      readers:
+        - pull:
+            exporter:
+              prometheus:
+                host: 0.0.0.0
+                port: 8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, filter/drop-health, resource/env, batch]
+      exporters: [clickhouse, span_metrics]
+    metrics:
+      receivers: [otlp, k8s_cluster, span_metrics]
+      processors: [memory_limiter, resource/env, batch]
+      exporters: [clickhouse, otlp_http/prometheus]
+{{- if .Values.nginx.enabled }}
+    metrics/nginx:
+      receivers: [nginx]
+      processors: [memory_limiter, resource/nginx, resource/env, batch]
+      exporters: [clickhouse, otlp_http/prometheus]
+{{- end }}
+    logs:
+      receivers: [otlp, k8s_objects]
+      processors: [memory_limiter, resource/env, batch]
+      exporters: [clickhouse]

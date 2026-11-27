@@ -1,0 +1,6 @@
+bin/
+collector/_build/
+deploy/helm/obs-stack/charts/
+*.exe
+*.tgz
+services/bin/

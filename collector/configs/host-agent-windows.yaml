@@ -1,0 +1,73 @@
+# Bare-metal host agent (runs natively on the Windows laptop).
+# Collects real CPU/memory/disk/network from the host plus NVIDIA GPU metrics
+# pushed by gpu-exporter (OTLP on 127.0.0.1:4327), and ships everything to the
+# gateway over OTLP. Port 4317 locally is the port-forward to the gateway.
+#
+#   otelcol-obs.exe --config collector/configs/host-agent-windows.yaml
+#
+# GATEWAY_ENDPOINT defaults to the port-forwarded gateway (scripts/host-agent.ps1).
+
+extensions:
+  health_check:
+    endpoint: 127.0.0.1:13134
+
+receivers:
+  host_metrics:
+    collection_interval: 15s
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization: { enabled: true }
+      memory:
+        metrics:
+          system.memory.utilization: { enabled: true }
+      disk: {}
+      filesystem:
+        metrics:
+          system.filesystem.utilization: { enabled: true }
+      network: {}
+      paging: {}
+      processes: {}
+
+  # gpu-exporter pushes DCGM-style GPU metrics here over OTLP.
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 127.0.0.1:4327
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+  resource:
+    attributes:
+      - { key: host.name, value: "${env:COMPUTERNAME}", action: upsert }
+      - { key: os.type, value: windows, action: upsert }
+      - { key: host.role, value: baremetal, action: upsert }
+      - { key: deployment.environment.name, value: lab, action: upsert }
+      - { key: service.name, value: baremetal-host, action: insert }
+  batch:
+    timeout: 5s
+
+exporters:
+  otlp_grpc:
+    endpoint: ${env:GATEWAY_ENDPOINT:-127.0.0.1:4317}
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+    retry_on_failure:
+      enabled: true
+  debug:
+    verbosity: basic
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    metrics:
+      receivers: [host_metrics, otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp_grpc]

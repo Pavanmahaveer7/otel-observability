@@ -1,0 +1,935 @@
+{
+  "uid": "obs-gpu-node",
+  "title": "Cloud GPU node - DCGM, NVLink, InfiniBand, NVMe (ClickHouse)",
+  "tags": [
+    "otel",
+    "gpu",
+    "dcgm",
+    "neocloud",
+    "clickhouse"
+  ],
+  "schemaVersion": 39,
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "row",
+      "title": "GPU activity (DCGM)",
+      "id": 2,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU utilization %",
+      "id": 3,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat('GPU ', Attributes['gpu']) AS series, avg(Value) * 1 AS value FROM ${database}.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) AND MetricName IN ('DCGM_FI_DEV_GPU_UTIL') GROUP BY time, series ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          },
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "SM active %",
+      "id": 4,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat('GPU ', Attributes['gpu']) AS series, avg(Value) * 100 AS value FROM ${database}.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) AND MetricName IN ('DCGM_FI_PROF_SM_ACTIVE') GROUP BY time, series ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          },
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Fraction of time at least one warp was active on an SM (DCGM profiling)."
+    },
+    {
+      "type": "timeseries",
+      "title": "Tensor core active %",
+      "id": 5,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat('GPU ', Attributes['gpu']) AS series, avg(Value) * 100 AS value FROM ${database}.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) AND MetricName IN ('DCGM_FI_PROF_PIPE_TENSOR_ACTIVE') GROUP BY time, series ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          },
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "HBM / DRAM active %",
+      "id": 6,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat('GPU ', Attributes['gpu']) AS series, avg(Value) * 100 AS value FROM ${database}.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) AND MetricName IN ('DCGM_FI_PROF_DRAM_ACTIVE') GROUP BY time, series ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          },
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Interconnect: NVLink, PCIe, InfiniBand",
+      "id": 7,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "NVLink bandwidth per GPU (TX + RX)",
+      "id": 8,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 18
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat('GPU ', Attributes['gpu']) AS series, sum(Value) * 1 AS value FROM ${database}.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) AND MetricName IN ('DCGM_FI_PROF_NVLINK_TX_BYTES', 'DCGM_FI_PROF_NVLINK_RX_BYTES') GROUP BY time, series ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Sum of TX and RX bytes/s per GPU. Lights up during the NCCL all-reduce phase."
+    },
+    {
+      "type": "timeseries",
+      "title": "PCIe bandwidth per GPU (TX + RX)",
+      "id": 9,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat('GPU ', Attributes['gpu']) AS series, sum(Value) * 1 AS value FROM ${database}.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) AND MetricName IN ('DCGM_FI_PROF_PCIE_TX_BYTES', 'DCGM_FI_PROF_PCIE_RX_BYTES') GROUP BY time, series ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "InfiniBand / RoCE port throughput",
+      "id": 10,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 26
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT time, series, greatest(v - lagInFrame(v, 1, v) OVER (PARTITION BY series ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) / $__interval_s * 1 AS value FROM (SELECT $__timeInterval(TimeUnix) AS time, concat(Attributes['device'], ':', Attributes['port'], ' ', if(MetricName LIKE '%received%', 'rx', 'tx')) AS series, max(Value) AS v FROM ${database}.otel_metrics_sum WHERE $__timeFilter(TimeUnix) AND MetricName IN ('node_infiniband_port_data_received_bytes', 'node_infiniband_port_data_received_bytes_total', 'node_infiniband_port_data_transmitted_bytes', 'node_infiniband_port_data_transmitted_bytes_total') GROUP BY time, series) ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Empty if the node has no HCAs (common on single-node instances)."
+    },
+    {
+      "type": "table",
+      "title": "InfiniBand port errors (window)",
+      "id": 11,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 26
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT Attributes['device'] AS device, Attributes['port'] AS port, replaceRegexpOne(MetricName, '^node_infiniband_|_total$', '') AS counter, max(Value) - min(Value) AS increase FROM ${database}.otel_metrics_sum WHERE $__timeFilter(TimeUnix) AND MetricName IN ('node_infiniband_link_downed', 'node_infiniband_link_downed_total', 'node_infiniband_link_error_recovery', 'node_infiniband_link_error_recovery_total', 'node_infiniband_port_errors_received', 'node_infiniband_port_errors_received_total', 'node_infiniband_symbol_error', 'node_infiniband_symbol_error_total', 'node_infiniband_port_transmit_wait', 'node_infiniband_port_transmit_wait_total') GROUP BY device, port, counter ORDER BY increase DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "row",
+      "title": "GPU health",
+      "id": 12,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 34
+      }
+    },
+    {
+      "type": "table",
+      "title": "XID errors (non-zero)",
+      "id": 13,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 35
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT Attributes['gpu'] AS gpu, Value AS xid, max(TimeUnix) AS last_seen, count() AS samples FROM ${database}.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) AND MetricName = 'DCGM_FI_DEV_XID_ERRORS' AND Value > 0 GROUP BY gpu, xid ORDER BY last_seen DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {},
+      "description": "Last XID per GPU. 48/63/64/74/79/94/95 are the ones that usually need a ticket."
+    },
+    {
+      "type": "table",
+      "title": "ECC & row remapping (latest)",
+      "id": 14,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 8,
+        "y": 35
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT Attributes['gpu'] AS gpu, argMaxIf(Value, TimeUnix, MetricName LIKE 'DCGM_FI_DEV_ECC_SBE_VOL_TOTAL%') AS ecc_sbe, argMaxIf(Value, TimeUnix, MetricName LIKE 'DCGM_FI_DEV_ECC_DBE_VOL_TOTAL%') AS ecc_dbe, argMaxIf(Value, TimeUnix, MetricName LIKE 'DCGM_FI_DEV_CORRECTABLE_REMAPPED_ROWS%') AS remap_corr, argMaxIf(Value, TimeUnix, MetricName LIKE 'DCGM_FI_DEV_UNCORRECTABLE_REMAPPED_ROWS%') AS remap_uncorr, argMaxIf(Value, TimeUnix, MetricName LIKE 'DCGM_FI_DEV_ROW_REMAP_FAILURE%') AS remap_fail, argMaxIf(Value, TimeUnix, MetricName LIKE 'DCGM_FI_DEV_PCIE_REPLAY_COUNTER%') AS pcie_replays FROM merge('${database}', '^otel_metrics_(gauge|sum)$') WHERE $__timeFilter(TimeUnix) AND MetricName LIKE 'DCGM_FI_DEV_%' GROUP BY gpu ORDER BY toUInt32OrZero(gpu)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "row",
+      "title": "Power & thermals",
+      "id": 15,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 43
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Power per GPU",
+      "id": 16,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 44
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat('GPU ', Attributes['gpu']) AS series, avg(Value) * 1 AS value FROM ${database}.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) AND MetricName IN ('DCGM_FI_DEV_POWER_USAGE') GROUP BY time, series ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "watt",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "GPU temperature",
+      "id": 17,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 44
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat('GPU ', Attributes['gpu']) AS series, avg(Value) * 1 AS value FROM ${database}.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) AND MetricName IN ('DCGM_FI_DEV_GPU_TEMP') GROUP BY time, series ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "HBM temperature",
+      "id": 18,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 44
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, concat('GPU ', Attributes['gpu']) AS series, avg(Value) * 1 AS value FROM ${database}.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) AND MetricName IN ('DCGM_FI_DEV_MEMORY_TEMP') GROUP BY time, series ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Storage: local NVMe / disks (node_exporter)",
+      "id": 19,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 52
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk throughput",
+      "id": 20,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 53
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT time, series, greatest(v - lagInFrame(v, 1, v) OVER (PARTITION BY series ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) / $__interval_s * 1 AS value FROM (SELECT $__timeInterval(TimeUnix) AS time, concat(Attributes['device'], if(MetricName LIKE '%read%', ' read', ' write')) AS series, max(Value) AS v FROM ${database}.otel_metrics_sum WHERE $__timeFilter(TimeUnix) AND MetricName IN ('node_disk_read_bytes', 'node_disk_read_bytes_total', 'node_disk_written_bytes', 'node_disk_written_bytes_total') GROUP BY time, series) ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Disk busy % (io_time)",
+      "id": 21,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 53
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT time, series, greatest(v - lagInFrame(v, 1, v) OVER (PARTITION BY series ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) / $__interval_s * 100 AS value FROM (SELECT $__timeInterval(TimeUnix) AS time, Attributes['device'] AS series, max(Value) AS v FROM ${database}.otel_metrics_sum WHERE $__timeFilter(TimeUnix) AND MetricName IN ('node_disk_io_time_seconds', 'node_disk_io_time_seconds_total') GROUP BY time, series) ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          },
+          "min": 0,
+          "max": 100
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Filesystems (latest)",
+      "id": 22,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 61
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT Attributes['mountpoint'] AS mount, Attributes['device'] AS device, Attributes['fstype'] AS fstype, round(argMaxIf(Value, TimeUnix, MetricName = 'node_filesystem_size_bytes') / 1e9, 1) AS size_gb, round(argMaxIf(Value, TimeUnix, MetricName = 'node_filesystem_avail_bytes') / 1e9, 1) AS avail_gb, round(100 * (1 - avail_gb / greatest(size_gb, 0.001)), 1) AS used_pct FROM ${database}.otel_metrics_gauge WHERE $__timeFilter(TimeUnix) AND MetricName IN ('node_filesystem_size_bytes', 'node_filesystem_avail_bytes') AND Attributes['fstype'] NOT IN ('tmpfs', 'overlay', 'squashfs') GROUP BY mount, device, fstype ORDER BY size_gb DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "row",
+      "title": "Load-test timeline",
+      "id": 23,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 68
+      }
+    },
+    {
+      "type": "table",
+      "title": "Load-test events (loadtests.sh)",
+      "id": 24,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 69
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT Timestamp AS time, LogAttributes['test.phase'] AS phase, LogAttributes['test.state'] AS state, LogAttributes['nccl.avg_busbw_gbps'] AS nccl_busbw_gbps, LogAttributes['fio.bw_mbps'] AS fio_mbps, LogAttributes['fio.iops'] AS fio_iops, LogAttributes['fio.mean_lat_us'] AS fio_lat_us, LogAttributes['result'] AS result FROM ${database}.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'loadtest' ORDER BY Timestamp",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "database",
+        "label": "Database",
+        "type": "custom",
+        "query": "otel,lambda_run",
+        "current": {
+          "text": "otel",
+          "value": "otel"
+        },
+        "options": [
+          {
+            "text": "otel",
+            "value": "otel",
+            "selected": true
+          },
+          {
+            "text": "lambda_run",
+            "value": "lambda_run",
+            "selected": false
+          }
+        ]
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Load-test phases",
+        "enable": true,
+        "iconColor": "orange",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "clickhouse"
+        },
+        "target": {
+          "refId": "Anno",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT Timestamp AS time, Body AS text FROM ${database}.otel_logs WHERE ServiceName = 'loadtest' AND $__timeFilter(Timestamp) ORDER BY time"
+        }
+      }
+    ]
+  }
+}

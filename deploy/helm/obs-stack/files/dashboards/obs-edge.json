@@ -1,0 +1,951 @@
+{
+  "uid": "obs-edge",
+  "title": "Edge - nginx (logs, traces, stub_status)",
+  "tags": [
+    "otel",
+    "nginx",
+    "edge",
+    "clickhouse"
+  ],
+  "schemaVersion": 39,
+  "editable": true,
+  "refresh": "30s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "row",
+      "title": "Traffic and errors (access logs)",
+      "id": 2,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests / s by status class",
+      "id": 3,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(Timestamp) AS time, concat(substring(LogAttributes['status'], 1, 1), 'xx') AS class, count() / $__interval_s AS rps FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' GROUP BY time, class ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Error % (4xx, 5xx)",
+      "id": 4,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(Timestamp) AS time, countIf(LogAttributes['status'] LIKE '4%') * 100 / count() AS `4xx %`, countIf(LogAttributes['status'] LIKE '5%') * 100 / count() AS `5xx %` FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Latency: user-facing vs backend",
+      "id": 5,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "p95 latency: total (request_time) vs upstream",
+      "id": 6,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(Timestamp) AS time, quantile(0.95)(toFloat64OrZero(LogAttributes['request_time'])) * 1000 AS `total p95`, quantile(0.95)(toFloat64OrZero(LogAttributes['upstream_response_time'])) * 1000 AS `upstream p95`, quantile(0.50)(toFloat64OrZero(LogAttributes['request_time'])) * 1000 AS `total p50` FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "request_time = what the client saw; upstream_response_time = time waiting on gateway."
+    },
+    {
+      "type": "timeseries",
+      "title": "nginx overhead p95 (total - upstream)",
+      "id": 7,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(Timestamp) AS time, quantile(0.95)(greatest(toFloat64OrZero(LogAttributes['request_time']) - toFloat64OrZero(LogAttributes['upstream_response_time']), 0)) * 1000 AS overhead_ms FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "Time spent in nginx itself: queueing, TLS, buffering. Should stay near zero."
+    },
+    {
+      "type": "row",
+      "title": "Connections (stub_status via the nginx receiver)",
+      "id": 8,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Connections by state",
+      "id": 9,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 19
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(TimeUnix) AS time, Attributes['state'] AS state, avg(Value) AS connections FROM otel.otel_metrics_sum WHERE $__timeFilter(TimeUnix) AND MetricName = 'nginx.connections_current' GROUP BY time, state ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Accepted vs handled connections / s, requests / s",
+      "id": 10,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 19
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT time, metric, greatest(v - lagInFrame(v, 1, v) OVER (PARTITION BY metric ORDER BY time ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 0) / $__interval_s AS per_s FROM (SELECT $__timeInterval(TimeUnix) AS time, MetricName AS metric, max(Value) AS v FROM otel.otel_metrics_sum WHERE $__timeFilter(TimeUnix) AND MetricName IN ('nginx.connections_accepted', 'nginx.connections_handled', 'nginx.requests') GROUP BY time, metric) ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "accepted > handled means nginx is dropping connections (worker_connections limit)."
+    },
+    {
+      "type": "row",
+      "title": "Load balancing, retries, canary",
+      "id": 11,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 27
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests / s per gateway pod (least_conn)",
+      "id": 12,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 28
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(Timestamp) AS time, concat(LogAttributes['route'], ' ', LogAttributes['upstream_addr']) AS pod, count() / $__interval_s AS rps FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' AND LogAttributes['route'] != '' AND LogAttributes['upstream_addr'] NOT LIKE '%,%' AND LogAttributes['upstream_addr'] LIKE '%:%' GROUP BY time, pod ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "nginx resolves the headless Service and balances across individual pods."
+    },
+    {
+      "type": "timeseries",
+      "title": "Retried requests / s (tried more than one pod)",
+      "id": 13,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 28
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(Timestamp) AS time, countIf(LogAttributes['upstream_addr'] LIKE '%,%') / $__interval_s AS retries FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' GROUP BY time ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "description": "proxy_next_upstream on connection error / 503. Stays at 0 while pods shut down gracefully."
+    },
+    {
+      "type": "timeseries",
+      "title": "Canary vs stable: 5xx %",
+      "id": 14,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 36
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(Timestamp) AS time, LogAttributes['route'] AS pool, countIf(LogAttributes['status'] LIKE '5%') * 100 / count() AS err_pct FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' AND LogAttributes['uri'] LIKE '/api/checkout%' AND LogAttributes['route'] != '' GROUP BY time, pool ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Canary vs stable: p50 latency",
+      "id": 15,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 36
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(Timestamp) AS time, LogAttributes['route'] AS pool, quantile(0.5)(toFloat64OrZero(LogAttributes['request_time'])) * 1000 AS p50_ms FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' AND LogAttributes['uri'] LIKE '/api/checkout%' AND LogAttributes['route'] != '' GROUP BY time, pool ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Cache, rate limiting, TLS",
+      "id": 16,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 44
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Catalog cache results / s",
+      "id": 17,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 45
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT $__timeInterval(Timestamp) AS time, LogAttributes['cache'] AS cache, count() / $__interval_s AS rps FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' AND LogAttributes['uri'] LIKE '/api/catalog%' AND LogAttributes['cache'] != '' GROUP BY time, cache ORDER BY time",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 40,
+            "showPoints": "never",
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Cache hit ratio",
+      "id": 18,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 8,
+        "y": 45
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT round(countIf(LogAttributes['cache'] = 'HIT') * 100 / greatest(count(), 1), 1) AS hit_pct FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' AND LogAttributes['uri'] LIKE '/api/catalog%' AND LogAttributes['cache'] != ''",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 50
+              },
+              {
+                "color": "green",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "table",
+      "title": "Rate-limited clients (429)",
+      "id": 19,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 12,
+        "y": 45
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT LogAttributes['remote_addr'] AS client, countIf(LogAttributes['status'] = '429') AS rejected, count() AS total, round(rejected * 100 / total, 1) AS rejected_pct FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' GROUP BY client HAVING rejected > 0 ORDER BY rejected DESC",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "piechart",
+      "title": "HTTP vs HTTPS",
+      "id": 20,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 6,
+        "x": 18,
+        "y": 45
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT if(LogAttributes['scheme'] = 'https', concat('https ', LogAttributes['ssl_protocol']), 'http') AS scheme, count() AS requests FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' GROUP BY scheme",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        },
+        "pieType": "donut",
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "values": [
+            "value"
+          ]
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "Breakdowns",
+      "id": 21,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 53
+      }
+    },
+    {
+      "type": "table",
+      "title": "Top URIs",
+      "id": 22,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 54
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT LogAttributes['method'] AS method, LogAttributes['uri'] AS uri, count() AS requests, round(countIf(LogAttributes['status'] LIKE '5%') * 100 / count(), 2) AS err_5xx_pct, round(quantile(0.95)(toFloat64OrZero(LogAttributes['request_time'])) * 1000, 1) AS p95_ms FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' GROUP BY method, uri ORDER BY requests DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "table",
+      "title": "Top clients",
+      "id": 23,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 54
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT LogAttributes['remote_addr'] AS client, any(LogAttributes['user_agent']) AS user_agent, count() AS requests, sum(toUInt64OrZero(LogAttributes['bytes_sent'])) AS bytes FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' GROUP BY client ORDER BY requests DESC LIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "table",
+      "title": "Recent 5xx responses (click-through via trace_id)",
+      "id": 24,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 62
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT Timestamp AS time, LogAttributes['status'] AS status, LogAttributes['upstream_status'] AS upstream, LogAttributes['uri'] AS uri, round(toFloat64OrZero(LogAttributes['request_time']) * 1000, 1) AS ms, TraceId AS trace_id FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' AND LogAttributes['status'] != '' AND LogAttributes['status'] LIKE '5%' ORDER BY Timestamp DESC LIMIT 50",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "type": "row",
+      "title": "Access log",
+      "id": 25,
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 70
+      }
+    },
+    {
+      "type": "logs",
+      "title": "nginx access log",
+      "id": 26,
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "clickhouse"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 71
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "clickhouse"
+          },
+          "editorType": "sql",
+          "format": 2,
+          "queryType": "logs",
+          "rawSql": "SELECT Timestamp AS timestamp, Body AS body, SeverityText AS level, TraceId AS trace_id FROM otel.otel_logs WHERE $__timeFilter(Timestamp) AND ServiceName = 'nginx' ORDER BY Timestamp DESC LIMIT 300",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  }
+}

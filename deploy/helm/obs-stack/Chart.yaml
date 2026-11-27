@@ -1,0 +1,18 @@
+apiVersion: v2
+name: obs-stack
+description: >
+  Observability stack for minikube: custom OTel Collector (agent DaemonSet + gateway),
+  ClickHouse as the single store for metrics, logs and traces, Prometheus, Grafana,
+  and three OTel-instrumented Go demo services.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+dependencies:
+  - name: grafana
+    version: 10.5.15
+    repository: https://grafana.github.io/helm-charts
+    condition: grafana.enabled
+  - name: prometheus
+    version: 29.49.0
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: prometheus.enabled

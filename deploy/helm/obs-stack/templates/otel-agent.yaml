@@ -1,0 +1,89 @@
+{{- $name := printf "%s-otel-agent" (include "obs.fullname" .) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}
+  labels: {{- include "obs.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+{{ tpl (.Files.Get "files/otel-agent.yaml") . | indent 4 }}
+---
+# Node-local Service: a pod's OTLP traffic always goes to the agent on its own node.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels: {{- include "obs.labels" . | nindent 4 }}
+spec:
+  internalTrafficPolicy: Local
+  selector:
+    app.kubernetes.io/name: otel-agent
+    app.kubernetes.io/instance: {{ .Release.Name }}
+  ports:
+    - { name: otlp-grpc, port: 4317, targetPort: 4317 }
+    - { name: otlp-http, port: 4318, targetPort: 4318 }
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: {{ $name }}
+  labels: {{- include "obs.labels" . | nindent 4 }}
+    app.kubernetes.io/name: otel-agent
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: otel-agent
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: otel-agent
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+        checksum/config: {{ tpl (.Files.Get "files/otel-agent.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "obs.fullname" . }}-otel
+      tolerations:
+        - operator: Exists
+      containers:
+        - name: otelcol
+          image: {{ .Values.otel.image }}
+          imagePullPolicy: {{ .Values.otel.imagePullPolicy }}
+          args: ["--config=/conf/config.yaml"]
+          env:
+            - name: K8S_NODE_NAME
+              valueFrom: { fieldRef: { fieldPath: spec.nodeName } }
+            - name: K8S_NODE_IP
+              valueFrom: { fieldRef: { fieldPath: status.hostIP } }
+            - name: GOMEMLIMIT
+              value: 400MiB
+          ports:
+            - { name: otlp-grpc, containerPort: 4317 }
+            - { name: otlp-http, containerPort: 4318 }
+            - { name: health, containerPort: 13133 }
+          readinessProbe:
+            httpGet: { path: /, port: health }
+          livenessProbe:
+            httpGet: { path: /, port: health }
+            initialDelaySeconds: 15
+          resources: {{- toYaml .Values.otel.agent.resources | nindent 12 }}
+          securityContext:
+            runAsUser: 0   # needed to read /var/log/pods and host /proc
+          volumeMounts:
+            - { name: config, mountPath: /conf }
+            - { name: varlogpods, mountPath: /var/log/pods, readOnly: true }
+            # With the docker runtime, /var/log/pods/*/*.log are symlinks into here.
+            - { name: dockercontainers, mountPath: /var/lib/docker/containers, readOnly: true }
+            - { name: hostfs, mountPath: /hostfs, readOnly: true, mountPropagation: HostToContainer }
+            - { name: storage, mountPath: /var/lib/otelcol/storage }
+      volumes:
+        - name: config
+          configMap: { name: {{ $name }} }
+        - name: varlogpods
+          hostPath: { path: /var/log/pods }
+        - name: dockercontainers
+          hostPath: { path: /var/lib/docker/containers, type: DirectoryOrCreate }
+        - name: hostfs
+          hostPath: { path: / }
+        - name: storage
+          hostPath: { path: /var/lib/otelcol/storage, type: DirectoryOrCreate }

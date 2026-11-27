@@ -1,0 +1,199 @@
+clusterName: minikube-obs
+environment: minikube
+
+# ---------------------------------------------------------------- ClickHouse
+# Single columnar store for all three pillars (otel_metrics_*, otel_logs, otel_traces).
+clickhouse:
+  image: clickhouse/clickhouse-server:25.8
+  database: otel
+  user: otel
+  password: otel-demo-password   # demo only; override with --set or a Secret in real use
+  ttl: 72h
+  storage: 10Gi
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits: { memory: 3Gi }
+
+# ---------------------------------------------------------------- OTel Collector
+otel:
+  image: obsdemo/otelcol-obs:0.1.0
+  imagePullPolicy: IfNotPresent
+  agent:
+    resources:
+      requests: { cpu: 100m, memory: 128Mi }
+      limits: { memory: 512Mi }
+    # Scrape node-local Prometheus exporters (dcgm-exporter, node_exporter).
+    # Needs the cloud/full collector image (builder-config.cloud.yaml); off for minikube.
+    scrape:
+      enabled: false
+  gateway:
+    replicas: 1
+    # NodePort so the bare-metal host agent can reach the gateway from outside the cluster.
+    # Use ClusterIP on machines with a public IP (see values-lambda.yaml).
+    serviceType: NodePort
+    nodePort: 30317
+    resources:
+      requests: { cpu: 200m, memory: 256Mi }
+      limits: { memory: 1Gi }
+
+# ---------------------------------------------------------------- NVIDIA GPU nodes (cloud)
+gpu:
+  dcgmExporter:
+    enabled: false
+    image: nvcr.io/nvidia/k8s/dcgm-exporter:4.5.2-4.8.1-ubuntu22.04
+    port: 9400
+    # Shipped in the image. dcp-metrics-included adds profiling (SM/tensor activity),
+    # NVLink and PCIe bandwidth, ECC, XID and row-remap counters to the defaults.
+    # Fall back to /etc/dcgm-exporter/default-counters.csv if profiling isn't supported.
+    countersFile: /etc/dcgm-exporter/dcp-metrics-included.csv
+    runtimeClassName: nvidia
+
+# ---------------------------------------------------------------- nginx edge (reverse proxy)
+# loadgen -> nginx -> gateway. nginx emits traces (ngx_otel_module, continues the
+# caller's trace), JSON access logs with trace IDs (collected by the agent's file_log),
+# and stub_status metrics (gateway's nginx receiver).
+nginx:
+  enabled: true
+  namespace: edge
+  image: nginx:1.30.8-alpine-otel
+  replicas: 1
+  # Upstream read timeout: the demo's injected slow payments (400-1000 ms) become 504s.
+  upstreamTimeout: 500ms
+  # Retry once on a connection error / 503 (e.g. a gateway pod being killed).
+  retryTries: 2
+  # Passive health check: take a pod out of rotation for failTimeout after maxFails
+  # failures. nginx's default (1) let single slow requests eject healthy pods until
+  # "no live upstreams" -> 502 for everyone (see docs/DECISIONS.md #13).
+  passiveHealth:
+    maxFails: 5
+    failTimeout: 10s
+  # Per-client rate limit on /api/* (loadgen runs well below it; bursts get 429).
+  rateLimit:
+    rps: 20
+    burst: 20
+  # Edge cache for GET /api/catalog.
+  cacheTTL: 10s
+  # Canary: share of /api/checkout traffic sent to gateway-v2.
+  canary:
+    enabled: true
+    weight: 10
+  # HTTPS on 8443 with a Helm-generated self-signed certificate.
+  tls:
+    enabled: true
+
+# ---------------------------------------------------------------- eBPF (OpenTelemetry eBPF Instrumentation)
+# Zero-code: spans + RED metrics for processes we never instrumented (Grafana,
+# Prometheus, ClickHouse HTTP), plus pod-to-pod network flow metrics. Sends OTLP to
+# the node agent. Processes that already export OTel (our Go services, nginx) are
+# skipped by OBI by default, so nothing is traced twice.
+ebpf:
+  enabled: true
+  image: otel/ebpf-instrument:v1.0.0
+  namespaces: [demo, edge, observability]
+  # Never instrument the telemetry pipeline itself (feedback loop).
+  excludePods: ["obs-otel-*", "obs-obi-*"]
+  networkMetrics: true
+  metricsInterval: 15s
+
+# ---------------------------------------------------------------- Demo services
+demo:
+  enabled: true
+  namespace: demo
+  image: obsdemo/services:0.1.0
+  imagePullPolicy: IfNotPresent
+  loadgenRPS: 5
+  paymentFailRate: 0.05
+  # Several gateway pods so nginx load balancing is visible.
+  gatewayReplicas: 3
+  # The canary build (gateway-v2) is deliberately a bit slower and buggier than v1.
+  canary:
+    version: 0.2.0
+    extraLatencyMs: 40
+    failRate: 0.03
+
+# ---------------------------------------------------------------- Prometheus (subchart)
+prometheus:
+  enabled: true
+  alertmanager: { enabled: false }
+  prometheus-pushgateway: { enabled: false }
+  prometheus-node-exporter: { enabled: false }   # node metrics come through OTel
+  kube-state-metrics: { enabled: false }          # cluster state comes from k8s_cluster receiver
+  server:
+    retention: 2d
+    persistentVolume: { size: 5Gi }
+    global:
+      scrape_interval: 15s
+    # Native OTLP ingestion: the OTel gateway pushes metrics to /api/v1/otlp/v1/metrics.
+    extraFlags:
+      - web.enable-lifecycle
+      - web.enable-otlp-receiver
+  serverFiles:
+    prometheus.yml:
+      otlp:
+        # Resource attributes that become labels on every series (others land in target_info).
+        promote_resource_attributes:
+          - service.name
+          - service.namespace
+          - host.name
+          - host.role
+          - k8s.cluster.name
+          - k8s.namespace.name
+          - k8s.node.name
+          - k8s.pod.name
+          - k8s.container.name
+          - k8s.deployment.name
+          - deployment.environment.name
+      storage:
+        tsdb:
+          out_of_order_time_window: 30m
+      scrape_configs:
+        # Collector's own telemetry (queue sizes, refused/sent points, ...).
+        - job_name: otel-gateway-self
+          static_configs:
+            - targets: ["obs-otel-gateway.observability.svc:8888"]
+
+# ---------------------------------------------------------------- Grafana (subchart)
+grafana:
+  enabled: true
+  adminUser: admin
+  adminPassword: admin
+  service:
+    type: NodePort
+    nodePort: 30300
+  plugins:
+    - grafana-clickhouse-datasource
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: ClickHouse
+          uid: clickhouse
+          type: grafana-clickhouse-datasource
+          isDefault: true
+          jsonData:
+            host: obs-clickhouse.observability.svc
+            port: 9000
+            protocol: native
+            username: otel
+            defaultDatabase: otel
+            logs:
+              defaultDatabase: otel
+              defaultTable: otel_logs
+              otelEnabled: true
+            traces:
+              defaultDatabase: otel
+              defaultTable: otel_traces
+              otelEnabled: true
+          secureJsonData:
+            password: otel-demo-password
+        - name: Prometheus
+          uid: prometheus
+          type: prometheus
+          url: http://obs-prometheus-server.observability.svc

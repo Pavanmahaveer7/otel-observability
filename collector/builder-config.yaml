@@ -1,0 +1,49 @@
+# OpenTelemetry Collector Builder (OCB) manifest for our custom distribution.
+# Build:  builder --config builder-config.yaml
+# One binary is used in three roles: k8s agent (DaemonSet), gateway, and the
+# bare-metal host agent on Windows. Each role only enables what it needs in its config.
+dist:
+  name: otelcol-obs
+  description: Custom OTel Collector for the obs demo (k8s + bare metal + ClickHouse)
+  output_path: ./_build
+  version: 0.1.0
+
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/hostmetricsreceiver v0.166.0
+  # prometheusreceiver intentionally left out: it drags in every cloud SDK used by Prometheus
+  # service discovery (~1 GB of modules). The GPU exporter pushes OTLP instead.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sobjectsreceiver v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/filelogreceiver v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/receiver/nginxreceiver v0.166.0   # nginx stub_status
+
+processors:
+  - gomod: go.opentelemetry.io/collector/processor/batchprocessor v0.166.0
+  - gomod: go.opentelemetry.io/collector/processor/memorylimiterprocessor v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/k8sattributesprocessor v1.5.0 # stable module, own 1.x version line
+  # resourcedetectionprocessor left out for the same reason (bundles AWS/GCP/Azure/OCI SDKs);
+  # host/node identity is set with the resource processor from env vars instead.
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourceprocessor v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/transformprocessor v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/processor/filterprocessor v0.166.0
+
+exporters:
+  - gomod: go.opentelemetry.io/collector/exporter/otlpexporter v0.166.0
+  - gomod: go.opentelemetry.io/collector/exporter/otlphttpexporter v0.166.0   # -> Prometheus native OTLP receiver
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/clickhouseexporter v0.166.0
+  # prometheusexporter left out: it imports Prometheus config (AWS/GCP/Azure remote-write auth SDKs).
+  # Prometheus v3 ingests OTLP natively, so the gateway pushes with otlphttp instead.
+
+connectors:
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/connector/spanmetricsconnector v0.166.0
+
+extensions:
+  - gomod: go.opentelemetry.io/collector/extension/zpagesextension v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/healthcheckextension v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/pprofextension v0.166.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/extension/storage/filestorage v0.166.0
+
+# providers: omitted -> OCB includes the default env/file/http/https/yaml providers.

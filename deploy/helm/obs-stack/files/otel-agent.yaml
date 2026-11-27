@@ -1,0 +1,189 @@
+# OTel agent: one per node (DaemonSet). Rendered by Helm via `tpl`.
+# Receives OTLP from pods on the node, collects node/pod/container metrics and
+# container logs, enriches everything with k8s metadata, forwards to the gateway.
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  file_storage:
+    directory: /var/lib/otelcol/storage
+    create_directory: true
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+  # Pod / container / node resource usage straight from the kubelet.
+  kubelet_stats:
+    collection_interval: 20s
+    auth_type: serviceAccount
+    endpoint: https://${env:K8S_NODE_IP}:10250
+    insecure_skip_verify: true
+    metric_groups: [node, pod, container]
+
+  # Node-level host metrics (the minikube node's CPU, memory, disk, network).
+  host_metrics:
+    collection_interval: 20s
+    root_path: /hostfs
+    scrapers:
+      cpu:
+        metrics:
+          system.cpu.utilization: { enabled: true }
+      memory:
+        metrics:
+          system.memory.utilization: { enabled: true }
+      load: {}
+      disk: {}
+      network: {}
+      filesystem:
+        exclude_fs_types:
+          match_type: strict
+          fs_types: [autofs, binfmt_misc, bpf, cgroup2, configfs, debugfs, devpts, devtmpfs, fusectl, hugetlbfs, mqueue, nsfs, overlay, proc, procfs, pstore, rpc_pipefs, securityfs, sysfs, tracefs, tmpfs, shm]
+        exclude_mount_points:
+          match_type: regexp
+          mount_points: ["/dev/.*", "/proc/.*", "/sys/.*", "/var/lib/docker/.*", "/var/lib/kubelet/.*"]
+
+  # Container stdout/stderr for everything except the demo apps (they send logs over OTLP).
+  file_log:
+    include: [/var/log/pods/*/*/*.log]
+    exclude:
+      - /var/log/pods/{{ .Release.Namespace }}_*otel-agent*/*/*.log
+      - /var/log/pods/{{ .Values.demo.namespace }}_*/*/*.log
+    start_at: end
+    include_file_path: true
+    include_file_name: false
+    storage: file_storage
+    operators:
+      - type: container
+        id: container-parser
+{{- if .Values.nginx.enabled }}
+      # nginx JSON access log -> attributes, trace/span IDs, severity from HTTP status.
+      - type: json_parser
+        id: nginx-access
+        if: 'resource["k8s.container.name"] == "nginx" and body matches "^\\{"'
+        parse_from: body
+        parse_to: attributes
+        on_error: send_quiet
+        trace:
+          trace_id: { parse_from: attributes.trace_id }
+          span_id: { parse_from: attributes.span_id }
+        # severity from HTTP status is set by the transform/nginx processor
+      - type: add
+        id: nginx-service-name
+        if: 'resource["k8s.container.name"] == "nginx"'
+        field: resource["service.name"]
+        value: nginx
+{{- end }}
+{{- if .Values.otel.agent.scrape.enabled }}
+
+  # GPU nodes (cloud/full collector only): scrape node-local exporters.
+  #   dcgm-exporter  -> NVIDIA DCGM: utilization, SM/tensor activity, NVLink, PCIe, ECC, XID, power
+  #   node_exporter  -> InfiniBand port counters, NVMe, disks, filesystems, pressure
+  prometheus/node:
+    config:
+      scrape_configs:
+        - job_name: dcgm-exporter
+          scrape_interval: 10s
+          static_configs:
+            - targets: ["${env:K8S_NODE_IP}:{{ .Values.gpu.dcgmExporter.port }}"]
+        - job_name: node-exporter
+          scrape_interval: 15s
+          static_configs:
+            - targets: ["${env:K8S_NODE_IP}:9100"]
+          metric_relabel_configs:
+            - source_labels: [__name__]
+              regex: "node_(infiniband|nvme|disk|filesystem|network|pressure|hwmon|thermal_zone|edac|load|memory_Mem|cpu_seconds)_.*"
+              action: keep
+{{- end }}
+
+processors:
+  # Fixed MiB limits: percentage mode can't read cgroup limits under minikube's docker driver.
+  # Keep below the container memory limit (512Mi) and GOMEMLIMIT (400MiB).
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 380
+    spike_limit_mib: 80
+
+  k8s_attributes:
+    auth_type: serviceAccount
+    passthrough: false
+    filter:
+      node_from_env_var: K8S_NODE_NAME
+    extract:
+      metadata:
+        - k8s.namespace.name
+        - k8s.pod.name
+        - k8s.pod.uid
+        - k8s.deployment.name
+        - k8s.daemonset.name
+        - k8s.statefulset.name
+        - k8s.node.name
+        - container.image.name
+        - container.image.tags
+      labels:
+        - tag_name: app
+          key: app.kubernetes.io/name
+          from: pod
+    pod_association:
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.uid
+      - sources:
+          - from: resource_attribute
+            name: k8s.pod.ip
+      - sources:
+          - from: connection
+
+{{- if .Values.nginx.enabled }}
+  # nginx access logs: severity from HTTP status (5xx ERROR, 4xx WARN, else INFO).
+  transform/nginx:
+    error_mode: ignore
+    log_statements:
+      - set(log.severity_number, SEVERITY_NUMBER_INFO) where resource.attributes["service.name"] == "nginx" and log.attributes["status"] != nil
+      - set(log.severity_text, "INFO") where resource.attributes["service.name"] == "nginx" and log.attributes["status"] != nil
+      - set(log.severity_number, SEVERITY_NUMBER_WARN) where resource.attributes["service.name"] == "nginx" and Double(log.attributes["status"]) >= 400
+      - set(log.severity_text, "WARN") where resource.attributes["service.name"] == "nginx" and Double(log.attributes["status"]) >= 400
+      - set(log.severity_number, SEVERITY_NUMBER_ERROR) where resource.attributes["service.name"] == "nginx" and Double(log.attributes["status"]) >= 500
+      - set(log.severity_text, "ERROR") where resource.attributes["service.name"] == "nginx" and Double(log.attributes["status"]) >= 500
+{{- end }}
+
+  resource/cluster:
+    attributes:
+      - { key: k8s.cluster.name, value: {{ .Values.clusterName }}, action: upsert }
+      - { key: k8s.node.name, value: "${env:K8S_NODE_NAME}", action: insert }
+      - { key: host.name, value: "${env:K8S_NODE_NAME}", action: insert }
+
+  batch:
+    timeout: 5s
+
+exporters:
+  otlp_grpc:
+    endpoint: {{ include "obs.fullname" . }}-otel-gateway:4317
+    tls:
+      insecure: true
+    sending_queue:
+      enabled: true
+    retry_on_failure:
+      enabled: true
+
+service:
+  extensions: [health_check, file_storage]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, k8s_attributes, resource/cluster, batch]
+      exporters: [otlp_grpc]
+    metrics:
+      receivers: [otlp, kubelet_stats, host_metrics{{ if .Values.otel.agent.scrape.enabled }}, prometheus/node{{ end }}]
+      processors: [memory_limiter, k8s_attributes, resource/cluster, batch]
+      exporters: [otlp_grpc]
+    logs:
+      receivers: [otlp, file_log]
+      processors: [memory_limiter, k8s_attributes{{ if .Values.nginx.enabled }}, transform/nginx{{ end }}, resource/cluster, batch]
+      exporters: [otlp_grpc]
